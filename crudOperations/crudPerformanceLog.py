@@ -15,3 +15,14 @@ def get_performance_logs():
     logs = db.query(PerformanceLog).all()
     db.close()
     return logs
+
+def delete_performance_log(log_id):
+    db = SessionLocal()
+    log = db.query(PerformanceLog).filter(PerformanceLog.id == log_id).first()
+    if log:
+        db.delete(log)
+        db.commit()
+        db.close()
+        return True
+    db.close()
+    return False
