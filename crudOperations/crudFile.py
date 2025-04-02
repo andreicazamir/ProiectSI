@@ -1,9 +1,14 @@
 from models.File import File
 from dbConfig import SessionLocal
 
-def create_file(filename, encryption_algorithm, key_id):
+def create_file(filename, encrypted_filename, encryption_algorithm, key_id):
     db = SessionLocal()
-    new_file = File(filename=filename, encryption_algorithm=encryption_algorithm, key_id=key_id)
+    new_file = File(
+        filename=filename,
+        encrypted_filename=encrypted_filename,
+        encryption_algorithm=encryption_algorithm,
+        key_id=key_id
+    )
     db.add(new_file)
     db.commit()
     db.refresh(new_file)

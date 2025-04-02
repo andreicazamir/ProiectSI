@@ -16,7 +16,7 @@ ALGORITHMS = {
 def update_algorithm_options(event):
     selected_type = key_type_var.get()
     algorithm_dropdown["values"] = ALGORITHMS.get(selected_type, [])
-    algorithm_var.set("")  # Resetare selectie
+    algorithm_var.set("") 
 
 # Functie pentru generarea si salvarea cheii
 def generate_and_save_key():
