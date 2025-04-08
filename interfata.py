@@ -1,3 +1,5 @@
+import os
+import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import time
@@ -28,8 +30,66 @@ def generate_and_save_key():
         return
     
     key_value = "RandomGeneratedValue"
+
+    try:
+        if key_type == "SIMETRIC":
+            if algorithm == "AES":
+                key_value = subprocess.check_output(
+                    ["openssl", "rand", "-hex", "32"], text=True).strip()
+            elif algorithm == "DES":
+                key_value = subprocess.check_output(
+                    ["openssl", "rand", "-hex", "8"], text=True).strip()
+            else:
+                raise ValueError("Algoritm simetric necunoscut.")
+        
+        elif key_type == "ASIMETRIC":
+            if algorithm == "RSA":
+                priv_result = subprocess.run(
+                    ["openssl", "genrsa", "2048"],
+                    capture_output=True, text=True, check=True
+                )
+                private_key = priv_result.stdout.strip()
+
+                pub_result = subprocess.run(
+                    ["openssl", "rsa", "-pubout"],
+                    input=private_key,
+                    capture_output=True, text=True, check=True
+                )
+                public_key = pub_result.stdout.strip()
+
+                key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
+
+            elif algorithm == "ECC":
+                priv_result = subprocess.run(
+                    ["openssl", "ecparam", "-name", "secp384r1", "-genkey"],
+                    capture_output=True, text=True, check=True
+                )
+                private_key = priv_result.stdout.strip()
+
+                pub_result = subprocess.run(
+                    ["openssl", "ec", "-pubout"],
+                    input=private_key,
+                    capture_output=True, text=True, check=True
+                )
+                public_key = pub_result.stdout.strip()
+
+                key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
+
+            else:
+                raise ValueError("Algoritm asimetric necunoscut.")
+
+        else:
+            raise ValueError("Tip de cheie necunoscut.")
+    
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Eroare OpenSSL", f"Eroare la executia comenzii OpenSSL:\n{e.stderr}")
+        return
+    except Exception as e:
+        messagebox.showerror("Eroare", f"A aparut o eroare la generarea cheii:\n{e}")
+        return
+
     key_id = create_key(key_type, algorithm, key_value)
-    messagebox.showinfo("Succes", f"Cheia a fost generata si salvata cu ID {key_id} \n Valoare cheie: {key_value}")
+    messagebox.showinfo("Succes", f"Cheia a fost generata si salvata cu ID {key_id}\n")
     refresh_keys()
     refresh_key_dropdown()
 
@@ -72,10 +132,65 @@ def save_selected_file():
         messagebox.showerror("Eroare", "Selectati un fisier si o cheie!")
         return
     
-    key_id = int(selected_key.split(" - ")[0])  # Extragem ID-ul cheii
-    algorithm = selected_key.split(" - ")[1]   # Extragem algoritmul cheii
-    encrypted_filename = f"encrypted_{file_path.split('/')[-1]}"  # Exemplu de nume de fisier criptat
+    key_id = int(selected_key.split(" - ")[0])  # Extracting the key ID
+    algorithm = selected_key.split(" - ")[1]   # Extracting the algorithm from the selected key
     
+    keys = get_keys()
+    key_value = None
+    for key in keys:
+        if key.id == key_id:
+            key_value = key.key_value
+            break
+    
+    if not key_value:
+        messagebox.showerror("Eroare", "Cheia selectata nu a fost gasita in baza de date!")
+        return
+
+    file_dir = os.path.dirname(file_path)
+    encrypted_filename = os.path.join(file_dir, f"encrypted_{os.path.basename(file_path)}")
+
+    if "-----BEGIN PRIVATE KEY-----" in selected_key and "-----BEGIN PUBLIC KEY-----" in selected_key:
+        private_key, public_key = selected_key.split("###KEY_SEPARATOR###")
+        
+        private_key_file = "private_key.pem"
+        public_key_file = "public_key.pem"
+        
+        with open(private_key_file, 'w') as private_key_f:
+            private_key_f.write(private_key.strip())
+        with open(public_key_file, 'w') as public_key_f:
+            public_key_f.write(public_key.strip())
+
+        try:
+            if algorithm == "RSA":
+                result = subprocess.run(
+                    ["openssl", "rsautl", "-encrypt", "-inkey", public_key_file, "-pubin", "-in", file_path, "-out", encrypted_filename],
+                    capture_output=True, text=True, check=True
+                )
+            else:
+                messagebox.showerror("Eroare", "Algoritm de criptare necunoscut pentru cheia asimetrica!")
+                return
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Eroare OpenSSL", f"Eroare la criptarea fisierului: {e.stderr}")
+            return
+    else:
+        try:
+            if algorithm == "AES":
+                result = subprocess.run(
+                    ["openssl", "enc", "-aes-256-cbc", "-salt", "-in", file_path, "-out", encrypted_filename, "-pass", f"pass:{key_value}"],
+                    capture_output=True, text=True, check=True
+                )
+            elif algorithm == "DES":
+                result = subprocess.run(
+                    ["openssl", "enc", "-des-cbc", "-salt", "-in", file_path, "-out", encrypted_filename, "-pass", f"pass:{key_value}"],
+                    capture_output=True, text=True, check=True
+                )
+            else:
+                messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
+                return
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Eroare OpenSSL", f"Eroare la criptarea fisierului: {e.stderr}")
+            return
+
     # Masurare performanta
     tracemalloc.start()
     start_time = time.time()
