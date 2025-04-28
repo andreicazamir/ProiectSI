@@ -1,9 +1,9 @@
 from models.PerformanceLog import PerformanceLog
 from dbConfig import SessionLocal
 
-def log_performance(operation, algorithm, execution_time, memory_usage):
+def log_performance(operation, algorithm, execution_time, execution_time_per_bit, memory_usage, memory_usage_per_bit):
     db = SessionLocal()
-    new_log = PerformanceLog(operation=operation, algorithm=algorithm, execution_time=execution_time, memory_usage=memory_usage)
+    new_log = PerformanceLog(operation=operation, algorithm=algorithm, execution_time=execution_time, execution_time_per_bit=execution_time_per_bit, memory_usage=memory_usage, memory_usage_per_bit=memory_usage_per_bit)
     db.add(new_log)
     db.commit()
     db.refresh(new_log)

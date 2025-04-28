@@ -9,4 +9,5 @@ class File(Base):
     encrypted_filename = Column(String(255), nullable=True)
     encryption_algorithm = Column(String(50))
     key_id = Column(Integer, ForeignKey("keys.id"), nullable=False)
+    operation = Column(String(50))
     created_at = Column(DateTime, default=datetime.utcnow)

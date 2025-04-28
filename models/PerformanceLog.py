@@ -8,5 +8,7 @@ class PerformanceLog(Base):
     operation = Column(String(50)) 
     algorithm = Column(String(50))
     execution_time = Column(Integer)
+    execution_time_per_bit = Column(Integer)
     memory_usage = Column(Integer) 
+    memory_usage_per_bit = Column(Integer) 
     created_at = Column(DateTime, default=datetime.utcnow)
