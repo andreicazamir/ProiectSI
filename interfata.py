@@ -11,8 +11,8 @@ from crudOperations.crudPerformanceLog import log_performance, get_performance_l
 
 # Dictionar pentru algoritmi in functie de tipul de cheie
 ALGORITHMS = {
-    "SIMETRIC": ["AES - OPENSSL", "DES - OPENSSL", "AES - WINDOWSCND", "DES - WINDOWSCND"],
-    "ASIMETRIC": ["RSA - OPENSSL", "RSA - WINDOWSCND"]
+    "SIMETRIC": ["AES - OPENSSL", "DES - OPENSSL", "AES - WINDOWSCNG", "DES - WINDOWSCNG"],
+    "ASIMETRIC": ["RSA - OPENSSL", "RSA - WINDOWSCNG"]
 }
 
 TIPMETODA = ["CRIPTARE", "DECRIPTARE"]
@@ -41,7 +41,7 @@ def generate_and_save_key():
                 if framework == "OPENSSL":
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "32"], text=True).strip()
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     command = '''
                     [byte[]]$key = New-Object byte[] 32;
                     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
@@ -55,7 +55,7 @@ def generate_and_save_key():
                 if framework == "OPENSSL":
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "8"], text=True).strip()
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     command = '''
                     [byte[]]$key = New-Object byte[] 8;
                     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
@@ -85,7 +85,7 @@ def generate_and_save_key():
                     public_key = pub_result.stdout.strip()
 
                     key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     command = '''
                     $cert = New-SelfSignedCertificate -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\\CurrentUser\\My" -Subject "CN=TempCert";
                     $pfxPath = "$env:TEMP\\temp.pfx";
@@ -207,7 +207,7 @@ def save_selected_file():
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut pentru cheia asimetrica!")
                         return
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     if algorithm == "RSA":
                         public_key_xml = key_value.split("###KEY_SEPARATOR###")[1]
                         ps_script_rsa = f"""
@@ -261,7 +261,7 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                     else:
                         messagebox.showerror("Eroare", "Algoritm de decriptare necunoscut pentru cheia asimetrica!")
                         return
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     if algorithm == "RSA":
                         return 
                     else:
@@ -298,7 +298,7 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
                         return
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
                         ps_script = f"""
                         $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
@@ -333,7 +333,7 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                         ps_script_des = f"""
                         $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
                         $KeyBytes = [System.Text.Encoding]::UTF8.GetBytes($Key)
-
+                        
                         $IV = New-Object Byte[] 8
                         [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
                                         
@@ -380,7 +380,7 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                     else:
                         messagebox.showerror("Eroare", "Algoritm de decriptare necunoscut!")
                         return
-                elif framework == "WINDOWSCND":
+                elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
                         return
                     elif algorithm == "DES":
