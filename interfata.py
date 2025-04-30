@@ -87,20 +87,11 @@ def generate_and_save_key():
                     key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
                 elif framework == "WINDOWSCNG":
                     command = '''
-                    $cert = New-SelfSignedCertificate -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\\CurrentUser\\My" -Subject "CN=TempCert";
-                    $pfxPath = "$env:TEMP\\temp.pfx";
-                    $cerPath = "$env:TEMP\\temp.cer";
-                    $pwd = ConvertTo-SecureString -String "temp1234" -Force -AsPlainText;
-                    Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd | Out-Null;
-                    Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null;
-                    $pfxBytes = Get-Content -Path $pfxPath -Encoding Byte;
-                    $cerBytes = Get-Content -Path $cerPath -Encoding Byte;
-                    $pfxBase64 = [Convert]::ToBase64String($pfxBytes);
-                    $cerBase64 = [Convert]::ToBase64String($cerBytes);
-                    Remove-Item $pfxPath;
-                    Remove-Item $cerPath;
-                    Write-Output "$pfxBase64###KEY_SEPARATOR###$cerBase64"
-                    '''
+$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider 2048
+$PrivateKeyXml = $RSA.ToXmlString($true)
+$PublicKeyXml = $RSA.ToXmlString($false)
+Write-Output "$PrivateKeyXml###KEY_SEPARATOR###$PublicKeyXml"
+'''
                     key_value = subprocess.check_output(
                         ["powershell", "-Command", command], text=True).strip()
                 else:
@@ -218,18 +209,18 @@ $PublicKeyXml = @'
 $InputFile = '{file_path}'
 $OutputFile = '{encrypted_filename}'
 
-# Citim datele din fișier
+# Citim datele din fisier
 $Data = [System.IO.File]::ReadAllBytes($InputFile)
 
-# Creăm obiectul RSA și importăm cheia publică
+# Cream obiectul RSA si importam cheia publica
 $RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider
 $RSA.PersistKeyInCsp = $false
 $RSA.FromXmlString($PublicKeyXml)
 
-# Criptăm datele
+# Criptam datele
 $EncryptedData = $RSA.Encrypt($Data, $true)
 
-# Scriem datele criptate în fișierul de ieșire
+# Scriem datele criptate in fisierul de iesire
 [System.IO.File]::WriteAllBytes($OutputFile, $EncryptedData)
 """
                         try:
@@ -263,7 +254,29 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                         return
                 elif framework == "WINDOWSCNG":
                     if algorithm == "RSA":
-                        return 
+
+                        private_key_xml = key_value.split("###KEY_SEPARATOR###")[0]
+                        ps_script_rsa_decrypt = (
+f"$PrivateKeyXml = @'\n"
+f"{private_key_xml}\n"
+f"'@\n"
+f"$InputFile = '{file_path}'\n"
+f"$OutputFile = '{decrypted_filename}'\n"
+f"$EncryptedData = [System.IO.File]::ReadAllBytes($InputFile)\n"
+f"$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider\n"
+f"$RSA.PersistKeyInCsp = $false\n"
+f"$RSA.FromXmlString($PrivateKeyXml)\n"
+f"$DecryptedData = $RSA.Decrypt($EncryptedData, $true)\n"
+f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
+)
+
+                        try:
+                            subprocess.run(["powershell", "-Command", ps_script_rsa_decrypt], capture_output=True, check=True, text=True)
+                        except subprocess.CalledProcessError as e:
+                            messagebox.showerror("Eroare PowerShell", f"Eroare la decriptarea RSA în CMD: {e.stderr}")
+                            print(e.stderr)
+                            return
+
                     else:
                         messagebox.showerror("Eroare", "Algoritm de decriptare necunoscut pentru cheia asimetrica!")
                         return
@@ -301,8 +314,8 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                 elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
                         ps_script = f"""
-                        $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
-                        $KeyBytes = [System.Text.Encoding]::UTF8.GetBytes($Key)
+                        $KeyBytes = [System.BitConverter]::GetBytes($key_value)
+                        $KeyBytes = $KeyBytes[0..($KeyBytes.Length - 1)]
 
                         $IV = New-Object Byte[] 16
                         [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
@@ -382,7 +395,37 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
                         return
                 elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
-                        return
+                        aes_key_hex = key_value 
+
+                        ps_decrypt = f"""
+$keyHex = "{aes_key_hex}"
+$encryptedFile = '{file_path}'
+$decryptedFile = '{decrypted_filename}'
+
+$keyBytes = -split $keyHex -replace '..', {{ [Convert]::ToByte($_, 16) }}
+
+$allBytes = [System.IO.File]::ReadAllBytes($encryptedFile)
+$iv = $allBytes[0..15]
+$data = $allBytes[16..($allBytes.Length - 1)]
+
+$aes = [System.Security.Cryptography.AesManaged]::Create()
+$aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+$aes.Key = $keyBytes
+$aes.IV = $iv
+
+$decryptor = $aes.CreateDecryptor()
+$decryptedBytes = $decryptor.TransformFinalBlock($data, 0, $data.Length)
+
+[System.IO.File]::WriteAllBytes($decryptedFile, $decryptedBytes)
+"""
+                        try:
+                            subprocess.run(["powershell", "-Command", ps_decrypt], check=True)
+                        except subprocess.CalledProcessError as e:
+                            messagebox.showerror("Eroare PowerShell", f"Eroare la decriptarea fisierului: {e.stderr}")
+                            print(e.stderr)
+                            return
+
                     elif algorithm == "DES":
                         return
                     else:

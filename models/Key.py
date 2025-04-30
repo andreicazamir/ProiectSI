@@ -7,5 +7,5 @@ class Key(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     key_type = Column(Enum('SIMETRIC', 'ASIMETRIC'))
     algorithm = Column(String(50))
-    key_value = Column(Text)
+    key_value = Column(String(5000))
     created_at = Column(DateTime, default=datetime.utcnow)
