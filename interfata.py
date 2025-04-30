@@ -11,8 +11,8 @@ from crudOperations.crudPerformanceLog import log_performance, get_performance_l
 
 # Dictionar pentru algoritmi in functie de tipul de cheie
 ALGORITHMS = {
-    "SIMETRIC": ["AES - OPENSSL", "DES - OPENSSL", "AES - LIBRESSL", "DES - LIBRESSL"],
-    "ASIMETRIC": ["RSA - OPENSSL", "RSA - LIBRESSL"]
+    "SIMETRIC": ["AES - OPENSSL", "DES - OPENSSL", "AES - WINDOWSCND", "DES - WINDOWSCND"],
+    "ASIMETRIC": ["RSA - OPENSSL", "RSA - WINDOWSCND"]
 }
 
 TIPMETODA = ["CRIPTARE", "DECRIPTARE"]
@@ -41,7 +41,7 @@ def generate_and_save_key():
                 if framework == "OPENSSL":
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "32"], text=True).strip()
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     command = '''
                     [byte[]]$key = New-Object byte[] 32;
                     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
@@ -55,7 +55,7 @@ def generate_and_save_key():
                 if framework == "OPENSSL":
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "8"], text=True).strip()
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     command = '''
                     [byte[]]$key = New-Object byte[] 8;
                     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
@@ -85,7 +85,7 @@ def generate_and_save_key():
                     public_key = pub_result.stdout.strip()
 
                     key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     command = '''
                     $cert = New-SelfSignedCertificate -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\\CurrentUser\\My" -Subject "CN=TempCert";
                     $pfxPath = "$env:TEMP\\temp.pfx";
@@ -190,7 +190,7 @@ def save_selected_file():
     if "PRIVATE KEY" in key_value and "PUBLIC KEY" in key_value:
         try:
             if selected_operation == "CRIPTARE":
-                filenameBD = encrypted_filename = os.path.join(file_dir, f"encrypted_{algorithm}_{base_name}.enc")
+                filenameBD = encrypted_filename = os.path.join(file_dir, f"encrypted_{algorithm}_{framework}_{base_name}.enc")
                 if framework == "OPENSSL":
                     if algorithm == "RSA":
                         private_key, public_key = key_value.split("###KEY_SEPARATOR###")
@@ -207,12 +207,12 @@ def save_selected_file():
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut pentru cheia asimetrica!")
                         return
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     return
                 else:
                     raise ValueError("Framework neimplementat.")
             elif selected_operation == "DECRIPTARE":
-                filenameBD = decrypted_filename = os.path.join(file_dir, f"decrypted_{algorithm}_{base_name}.txt")
+                filenameBD = decrypted_filename = os.path.join(file_dir, f"decrypted_{algorithm}_{framework}_{base_name}.txt")
                 if framework == "OPENSSL":
                     if algorithm == "RSA":
                         private_key = key_value.split("###KEY_SEPARATOR###")[0]
@@ -229,7 +229,7 @@ def save_selected_file():
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut pentru cheia asimetrica!")
                         return
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     return
                 else:
                     raise ValueError("Framework neimplementat.")
@@ -247,7 +247,7 @@ def save_selected_file():
     else:
         try:
             if selected_operation == "CRIPTARE":
-                filenameBD = encrypted_filename = os.path.join(file_dir, f"encrypted_{algorithm}_{base_name}.enc")
+                filenameBD = encrypted_filename = os.path.join(file_dir, f"encrypted_{algorithm}_{framework}_{base_name}.enc")
                 if framework == "OPENSSL":
                     if algorithm == "AES":
                         result = subprocess.run(
@@ -262,7 +262,7 @@ def save_selected_file():
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
                         return
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     if algorithm == "AES":
                                 ps_script = f"""
                                 $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
@@ -355,7 +355,7 @@ def save_selected_file():
                 else:
                     raise ValueError("Framework neimplementat.")
             elif selected_operation == "DECRIPTARE":
-                filenameBD = decrypted_filename = os.path.join(file_dir, f"decrypted_{algorithm}_{base_name}.txt")
+                filenameBD = decrypted_filename = os.path.join(file_dir, f"decrypted_{algorithm}_{framework}_{base_name}.txt")
                 if framework == "OPENSSL":
                     if algorithm == "AES":
                         result = subprocess.run(
@@ -370,7 +370,7 @@ def save_selected_file():
                     else:
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
                         return
-                elif framework == "LIBRESSL":
+                elif framework == "WINDOWSCND":
                     ps_script = f"""
                     # Extract private key from the key_value
                     $key_parts = '{key_value}'.Split('###KEY_SEPARATOR###')
@@ -428,13 +428,13 @@ def save_selected_file():
     current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
-    file_id = create_file(file_path, filenameBD, algorithm, key_id, selected_operation)
+    file_id = create_file(file_path, filenameBD, f"{algorithm} - {framework}", key_id, selected_operation)
     execution_time = (end_time - start_time) * 1000  # Convertire in milisecunde
     memory_usage = peak / 1024  # Convertire in KB
     execution_time_per_bit = execution_time/total_bits
     memory_usage_per_bit = memory_usage/total_bits
     
-    log_performance(selected_operation, selected_key, execution_time,execution_time_per_bit, memory_usage,memory_usage_per_bit)
+    log_performance(selected_operation, selected_key, execution_time,execution_time_per_bit, memory_usage,memory_usage_per_bit, file_path)
    
     messagebox.showinfo("Succes", f"Fisierul a fost salvat cu ID {file_id}")
     refresh_files()
@@ -462,7 +462,7 @@ def refresh_performance_logs():
     tree.delete(*tree.get_children())
     logs = get_performance_logs()
     for log in logs:
-        tree.insert("", "end", values=(log.id, log.operation, log.algorithm, log.execution_time, log.execution_time_per_bit, log.memory_usage, log.memory_usage_per_bit))
+        tree.insert("", "end", values=(log.id, log.operation, log.algorithm, log.fisier, log.execution_time, log.execution_time_per_bit, log.memory_usage, log.memory_usage_per_bit))
 
 # Functie pentru stergerea unei intrari din performance log
 def delete_selected_performance_log():
@@ -595,11 +595,12 @@ delete_log_button = tk.Button(performance_tab, text="Sterge Performanta", comman
 delete_log_button.grid(row=0, column=0, padx=5, pady=5)
 
 # Tabel Performance Logs
-tree = ttk.Treeview(performance_tab, columns=("ID", "Operatie", "Algoritm", "Timp", "Timp per bit", "Memorie", "Memorie per bit"), show="headings")
-tree.grid(row=2, column=0, columnspan=7, sticky="nsew")
+tree = ttk.Treeview(performance_tab, columns=("ID", "Operatie", "Algoritm", "Fisier", "Timp", "Timp per bit", "Memorie", "Memorie per bit"), show="headings")
+tree.grid(row=2, column=0, columnspan=8, sticky="nsew")
 tree.heading("ID", text="ID")
 tree.heading("Operatie", text="Operatie")
 tree.heading("Algoritm", text="Algoritm")
+tree.heading("Fisier", text="Fisier")
 tree.heading("Timp", text="Timp (ms)")
 tree.heading("Timp per bit", text="Timp per bit (ms)")
 tree.heading("Memorie", text="Memorie (KB)")
@@ -607,12 +608,13 @@ tree.heading("Memorie per bit", text="Memorie pet bit (KB)")
 
 
 tree.column("ID", stretch=tk.NO, width=50)  
-tree.column("Operatie", stretch=tk.YES)  
-tree.column("Algoritm", stretch=tk.YES)  
-tree.column("Timp", stretch=tk.YES) 
-tree.column("Timp per bit", stretch=tk.YES)  
-tree.column("Memorie", stretch=tk.YES)
-tree.column("Memorie per bit", stretch=tk.YES)
+tree.column("Operatie", stretch=tk.YES, width=75)  
+tree.column("Algoritm", stretch=tk.YES)
+tree.column("Fisier", stretch=tk.YES)  
+tree.column("Timp", stretch=tk.YES, width=150) 
+tree.column("Timp per bit", stretch=tk.YES, width=150)  
+tree.column("Memorie", stretch=tk.YES, width=150)
+tree.column("Memorie per bit", stretch=tk.YES, width=150)
 
 
 performance_tab.grid_columnconfigure(0, weight=1)
