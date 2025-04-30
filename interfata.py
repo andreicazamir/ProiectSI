@@ -42,7 +42,13 @@ def generate_and_save_key():
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "32"], text=True).strip()
                 elif framework == "LIBRESSL":
-                    raise ValueError("Framework neimplementat.")
+                    command = '''
+                    [byte[]]$key = New-Object byte[] 32;
+                    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
+                    ($key | ForEach-Object { $_.ToString("X2") }) -join ""
+                    '''
+                    key_value = subprocess.check_output(
+                        ["powershell", "-Command", command], text=True).strip()
                 else:
                     raise ValueError("Framework inexistent.")
             elif algorithm == "DES":
@@ -50,9 +56,15 @@ def generate_and_save_key():
                     key_value = subprocess.check_output(
                         ["openssl", "rand", "-hex", "8"], text=True).strip()
                 elif framework == "LIBRESSL":
-                    raise ValueError("Framework neimplementat.")
+                    command = '''
+                    [byte[]]$key = New-Object byte[] 8;
+                    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key);
+                    ($key | ForEach-Object { $_.ToString("X2") }) -join ""
+                    '''
+                    key_value = subprocess.check_output(
+                        ["powershell", "-Command", command], text=True).strip()
                 else:
-                    raise ValueError("Framework inexistent.")
+                    raise ValueError("Framework necunoscut.")
             else:
                 raise ValueError("Algoritm simetric necunoscut.")
         
@@ -74,7 +86,23 @@ def generate_and_save_key():
 
                     key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
                 elif framework == "LIBRESSL":
-                    raise ValueError("Framework neimplementat.")
+                    command = '''
+                    $cert = New-SelfSignedCertificate -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\\CurrentUser\\My" -Subject "CN=TempCert";
+                    $pfxPath = "$env:TEMP\\temp.pfx";
+                    $cerPath = "$env:TEMP\\temp.cer";
+                    $pwd = ConvertTo-SecureString -String "temp1234" -Force -AsPlainText;
+                    Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd | Out-Null;
+                    Export-Certificate -Cert $cert -FilePath $cerPath | Out-Null;
+                    $pfxBytes = Get-Content -Path $pfxPath -Encoding Byte;
+                    $cerBytes = Get-Content -Path $cerPath -Encoding Byte;
+                    $pfxBase64 = [Convert]::ToBase64String($pfxBytes);
+                    $cerBase64 = [Convert]::ToBase64String($cerBytes);
+                    Remove-Item $pfxPath;
+                    Remove-Item $cerPath;
+                    Write-Output "$pfxBase64###KEY_SEPARATOR###$cerBase64"
+                    '''
+                    key_value = subprocess.check_output(
+                        ["powershell", "-Command", command], text=True).strip()
                 else:
                     raise ValueError("Framework inexistent.")
             else:
@@ -235,7 +263,95 @@ def save_selected_file():
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
                         return
                 elif framework == "LIBRESSL":
-                    return
+                    if algorithm == "AES":
+                                ps_script = f"""
+                                $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
+                                $KeyBytes = [System.Text.Encoding]::UTF8.GetBytes($Key)
+
+                                $IV = New-Object Byte[] 16
+                                [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
+
+                                $AES = New-Object System.Security.Cryptography.AesManaged
+                                $AES.Key = $KeyBytes
+                                $AES.IV = $IV
+                                $AES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                                $AES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                                $Encryptor = $AES.CreateEncryptor()
+
+                                $InputFile = '{file_path}'
+                                $OutputFile = '{encrypted_filename}'
+
+                                $Data = [System.IO.File]::ReadAllBytes($InputFile)
+                                $EncryptedData = $Encryptor.TransformFinalBlock($Data, 0, $Data.Length)
+
+                                [System.IO.File]::WriteAllBytes($OutputFile, $IV + $EncryptedData)
+                                """
+                                try:
+                                    subprocess.run(["powershell", "-Command", ps_script], check=True)
+                                except subprocess.CalledProcessError as e:
+                                    messagebox.showerror("Eroare PowerShell", f"Eroare la criptarea fisierului: {e.stderr}")
+                                    print(e.stderr)
+                                    return
+
+                    elif algorithm == "DES":
+                        ps_script = f"""
+                        # Extract private key from the key_value
+                        $key_parts = '{key_value}'.Split('###KEY_SEPARATOR###')
+                        $PrivateKey = $key_parts[0]  # Private key will be the first part
+                        $PublicKey = $key_parts[1]   # Public key will be the second part (though not needed for decryption)
+
+                        # Convert the private key to SecureString
+                        $PrivateKey = ConvertTo-SecureString -String $PrivateKey -AsPlainText -Force
+
+                        # Convert SecureString to Byte array
+                        $PrivateKeyBytes = [System.Text.Encoding]::UTF8.GetBytes($PrivateKey)
+
+                        # Read the encrypted file and extract the IV and ciphertext
+                        $InputFile = '{file_path}'
+                        $OutputFile = '{decrypted_filename}'
+
+                        $FileBytes = [System.IO.File]::ReadAllBytes($InputFile)
+                        $IV = $FileBytes[0..15]  # Extract the IV from the first 16 bytes
+                        $CipherText = $FileBytes[16..($FileBytes.Length - 1)]  # The remaining bytes are the encrypted data
+
+                        # Select algorithm (AES or DES) for decryption
+                        if ('{algorithm}' -eq 'AES') {{
+                            # Set up AES decryption
+                            $AES = New-Object System.Security.Cryptography.AesManaged
+                            $AES.Key = $PrivateKeyBytes  # Use the private key (converted to byte array)
+                            $AES.IV = $IV
+                            $AES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $AES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                            $Decryptor = $AES.CreateDecryptor()
+                        }} elseif ('{algorithm}' -eq 'DES') {{
+                            # Set up DES decryption
+                            $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
+                            $DES.Key = $PrivateKeyBytes[0..7]  # DES key is 8 bytes, so take first 8 bytes
+                            $DES.IV = $IV
+                            $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $DES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                            $Decryptor = $DES.CreateDecryptor()
+                        }} else {{
+                            throw "Algorithm not supported"
+                        }}
+
+                        # Decrypt the ciphertext
+                        $DecryptedData = $Decryptor.TransformFinalBlock($CipherText, 0, $CipherText.Length)
+
+                        # Write the decrypted data to the output file
+                        [System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)
+                        """
+                        try:
+                            subprocess.run(["powershell", "-Command", ps_script], check=True)
+                        except subprocess.CalledProcessError as e:
+                            messagebox.showerror("Eroare PowerShell", f"Eroare la criptarea fisierului: {e.stderr}")
+                            print(e.stderr)
+                            return
+
+                    else:
+                        messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
+                        return
+
                 else:
                     raise ValueError("Framework neimplementat.")
             elif selected_operation == "DECRIPTARE":
@@ -255,7 +371,47 @@ def save_selected_file():
                         messagebox.showerror("Eroare", "Algoritm de criptare necunoscut!")
                         return
                 elif framework == "LIBRESSL":
-                    return
+                    ps_script = f"""
+                    # Extract private key from the key_value
+                    $key_parts = '{key_value}'.Split('###KEY_SEPARATOR###')
+                    $PrivateKey = $key_parts[0]  # Private key will be the first part
+                    $PublicKey = $key_parts[1]   # Public key will be the second part (though not needed for decryption)
+
+                    # Convert the private key to SecureString
+                    $PrivateKey = ConvertTo-SecureString -String $PrivateKey -AsPlainText -Force
+
+                    # Convert SecureString to Byte array
+                    $PrivateKeyBytes = [System.Text.Encoding]::UTF8.GetBytes($PrivateKey)
+
+                    # Read the encrypted file and extract the IV and ciphertext
+                    $InputFile = '{file_path}'
+                    $OutputFile = '{decrypted_filename}'
+
+                    $FileBytes = [System.IO.File]::ReadAllBytes($InputFile)
+                    $IV = $FileBytes[0..15]  # Extract the IV from the first 16 bytes
+                    $CipherText = $FileBytes[16..($FileBytes.Length - 1)]  # The remaining bytes are the encrypted data
+
+                    # Set up AES decryption
+                    $AES = New-Object System.Security.Cryptography.AesManaged
+                    $AES.Key = $PrivateKeyBytes  # Use the private key (converted to byte array)
+                    $AES.IV = $IV
+                    $AES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                    $AES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                    $Decryptor = $AES.CreateDecryptor()
+
+                    # Decrypt the ciphertext
+                    $DecryptedData = $Decryptor.TransformFinalBlock($CipherText, 0, $CipherText.Length)
+
+                    # Write the decrypted data to the output file
+                    [System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)
+                    """
+
+                    try:
+                        subprocess.run(["powershell", "-Command", ps_script], check=True)
+                    except subprocess.CalledProcessError as e:
+                        messagebox.showerror("Eroare PowerShell", f"Eroare la decriptarea fisierului: {e.stderr}")
+                        print(e.stderr)
+                        return
                 else:
                     raise ValueError("Framework neimplementat.")
             else:
