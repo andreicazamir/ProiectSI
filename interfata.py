@@ -400,7 +400,6 @@ $final = New-Object byte[] ($iv.Length + $cipher.Length)
                 elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
                         aes_key_hex = key_value 
-                        print(aes_key_hex)
                         ps_decrypt = f'''
 $key_hex = "{aes_key_hex}"
 $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
@@ -429,7 +428,32 @@ $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
                             return
 
                     elif algorithm == "DES":
-                        return
+                        ps_decrypt = f"""
+                        $key_hex = "{key_value}"
+                        $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                        $key = [byte[]]$key
+                        "Key length: $($key.Length)" | Out-Host
+
+                        $data = [System.IO.File]::ReadAllBytes("{file_path}")
+                        $iv = $data[0..7]
+                        $cipher = $data[8..($data.Length - 1)]
+                                        
+                        $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
+                        $DES.Key = $key
+                        $DES.IV = $IV
+                        $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                        $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
+                        $decryptor = $DES.CreateDecryptor()
+
+                        $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
+                        [System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
+                        """
+                        try:
+                            subprocess.run(["powershell", "-Command", ps_decrypt], check=True)
+                        except subprocess.CalledProcessError as e:
+                            messagebox.showerror("Eroare PowerShell", f"Eroare la decriptarea fisierului: {e.stderr}")
+                            print(e.stderr)
+                            return
                     else:
                         messagebox.showerror("Eroare", "Algoritm de decriptare necunoscut!")
                         return
