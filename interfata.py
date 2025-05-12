@@ -347,14 +347,15 @@ $final = New-Object byte[] ($iv.Length + $cipher.Length)
 
                     elif algorithm == "DES":
                         ps_script_des = f"""
-                        $Key = ConvertTo-SecureString -String '{key_value}' -AsPlainText -Force
-                        $KeyBytes = [System.Text.Encoding]::UTF8.GetBytes($Key)
+                        $key_hex = "{key_value}"
+                        $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                        $key = [byte[]]$key
                         
                         $IV = New-Object Byte[] 8
                         [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
                                         
                         $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
-                        $DES.Key = $KeyBytes
+                        $DES.Key = $key
                         $DES.IV = $IV
                         $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
                         $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
