@@ -313,28 +313,31 @@ f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
                         return
                 elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
-                        ps_script = f"""
-                        $KeyBytes = [System.BitConverter]::GetBytes($key_value)
-                        $KeyBytes = $KeyBytes[0..($KeyBytes.Length - 1)]
+                        key_hex = key_value
+                        ps_script = f'''
+$key_hex = "{key_hex}"
+$key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+$key = [byte[]]$key
 
-                        $IV = New-Object Byte[] 16
-                        [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
-                                
-                        $AES = New-Object System.Security.Cryptography.AesManaged
-                        $AES.Key = $KeyBytes
-                        $AES.IV = $IV
-                        $AES.Mode = [System.Security.Cryptography.CipherMode]::CBC
-                        $AES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-                        $Encryptor = $AES.CreateEncryptor()
+$iv = New-Object byte[] 16
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
 
-                        $InputFile = '{file_path}'
-                        $OutputFile = '{encrypted_filename}'
+$aes = [System.Security.Cryptography.AesCng]::new()
+$aes.Key = $key
+$aes.IV = $iv
+$aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+$encryptor = $aes.CreateEncryptor()
 
-                        $Data = [System.IO.File]::ReadAllBytes($InputFile)
-                        $EncryptedData = $Encryptor.TransformFinalBlock($Data, 0, $Data.Length)
+$data = [System.IO.File]::ReadAllBytes("{file_path}")
+$cipher = $encryptor.TransformFinalBlock($data, 0, $data.Length)
 
-                        [System.IO.File]::WriteAllBytes($OutputFile, $IV + $EncryptedData)
-                        """
+$final = New-Object byte[] ($iv.Length + $cipher.Length)
+[Array]::Copy($iv, 0, $final, 0, $iv.Length)
+[Array]::Copy($cipher, 0, $final, $iv.Length, $cipher.Length)
+
+[System.IO.File]::WriteAllBytes("{encrypted_filename}", $final)
+'''
                         try:
                             subprocess.run(["powershell", "-Command", ps_script], check=True)
                         except subprocess.CalledProcessError as e:
@@ -396,29 +399,27 @@ f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
                 elif framework == "WINDOWSCNG":
                     if algorithm == "AES":
                         aes_key_hex = key_value 
+                        print(aes_key_hex)
+                        ps_decrypt = f'''
+$key_hex = "{aes_key_hex}"
+$key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+$key = [byte[]]$key
+"Key length: $($key.Length)" | Out-Host
 
-                        ps_decrypt = f"""
-$keyHex = "{aes_key_hex}"
-$encryptedFile = '{file_path}'
-$decryptedFile = '{decrypted_filename}'
+$data = [System.IO.File]::ReadAllBytes("{file_path}")
+$iv = $data[0..15]
+$cipher = $data[16..($data.Length - 1)]
 
-$keyBytes = -split $keyHex -replace '..', {{ [Convert]::ToByte($_, 16) }}
-
-$allBytes = [System.IO.File]::ReadAllBytes($encryptedFile)
-$iv = $allBytes[0..15]
-$data = $allBytes[16..($allBytes.Length - 1)]
-
-$aes = [System.Security.Cryptography.AesManaged]::Create()
+$aes = [System.Security.Cryptography.AesCng]::new()
+$aes.Key = $key
+$aes.IV = $iv
 $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
 $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-$aes.Key = $keyBytes
-$aes.IV = $iv
-
 $decryptor = $aes.CreateDecryptor()
-$decryptedBytes = $decryptor.TransformFinalBlock($data, 0, $data.Length)
 
-[System.IO.File]::WriteAllBytes($decryptedFile, $decryptedBytes)
-"""
+$plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
+[System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
+'''
                         try:
                             subprocess.run(["powershell", "-Command", ps_decrypt], check=True)
                         except subprocess.CalledProcessError as e:
