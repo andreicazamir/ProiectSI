@@ -87,11 +87,11 @@ def generate_and_save_key():
                     key_value = f"{private_key}###KEY_SEPARATOR###{public_key}"
                 elif framework == "WINDOWSCNG":
                     command = '''
-$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider 2048
-$PrivateKeyXml = $RSA.ToXmlString($true)
-$PublicKeyXml = $RSA.ToXmlString($false)
-Write-Output "$PrivateKeyXml###KEY_SEPARATOR###$PublicKeyXml"
-'''
+                        $RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider 2048
+                        $PrivateKeyXml = $RSA.ToXmlString($true)
+                        $PublicKeyXml = $RSA.ToXmlString($false)
+                        Write-Output "$PrivateKeyXml###KEY_SEPARATOR###$PublicKeyXml"
+                        '''
                     key_value = subprocess.check_output(
                         ["powershell", "-Command", command], text=True).strip()
                 else:
@@ -201,28 +201,29 @@ def save_selected_file():
                 elif framework == "WINDOWSCNG":
                     if algorithm == "RSA":
                         public_key_xml = key_value.split("###KEY_SEPARATOR###")[1]
-                        ps_script_rsa = f"""
-$PublicKeyXml = @'
-{public_key_xml}
-'@
 
-$InputFile = '{file_path}'
-$OutputFile = '{encrypted_filename}'
+                        ps_script_rsa = (
+                            f"$PublicKeyXml = @'\n"
+                            f"{public_key_xml}\n"
+                            f"'@\n"
 
-# Citim datele din fisier
-$Data = [System.IO.File]::ReadAllBytes($InputFile)
+                            f"$InputFile = '{file_path}'\n"
+                            f"$OutputFile = '{encrypted_filename}'\n"
 
-# Cream obiectul RSA si importam cheia publica
-$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider
-$RSA.PersistKeyInCsp = $false
-$RSA.FromXmlString($PublicKeyXml)
+                            f"# Citim datele din fisier\n"
+                            f"$Data = [System.IO.File]::ReadAllBytes($InputFile)\n"
 
-# Criptam datele
-$EncryptedData = $RSA.Encrypt($Data, $true)
+                            f"# Cream obiectul RSA si importam cheia publica\n"
+                            f"$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider\n"
+                            f"$RSA.PersistKeyInCsp = $false\n"
+                            f"$RSA.FromXmlString($PublicKeyXml)\n"
 
-# Scriem datele criptate in fisierul de iesire
-[System.IO.File]::WriteAllBytes($OutputFile, $EncryptedData)
-"""
+                            f"# Criptam datele\n"
+                            f"$EncryptedData = $RSA.Encrypt($Data, $true)\n"
+
+                            f"# Scriem datele criptate in fisierul de iesire\n"
+                            f"[System.IO.File]::WriteAllBytes($OutputFile, $EncryptedData)\n"
+                            )   
                         try:
                             subprocess.run(["powershell", "-Command", ps_script_rsa], capture_output=True, check=True, text=True)
                         except subprocess.CalledProcessError as e:
@@ -257,18 +258,18 @@ $EncryptedData = $RSA.Encrypt($Data, $true)
 
                         private_key_xml = key_value.split("###KEY_SEPARATOR###")[0]
                         ps_script_rsa_decrypt = (
-f"$PrivateKeyXml = @'\n"
-f"{private_key_xml}\n"
-f"'@\n"
-f"$InputFile = '{file_path}'\n"
-f"$OutputFile = '{decrypted_filename}'\n"
-f"$EncryptedData = [System.IO.File]::ReadAllBytes($InputFile)\n"
-f"$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider\n"
-f"$RSA.PersistKeyInCsp = $false\n"
-f"$RSA.FromXmlString($PrivateKeyXml)\n"
-f"$DecryptedData = $RSA.Decrypt($EncryptedData, $true)\n"
-f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
-)
+                            f"$PrivateKeyXml = @'\n"
+                            f"{private_key_xml}\n"
+                            f"'@\n"
+                            f"$InputFile = '{file_path}'\n"
+                            f"$OutputFile = '{decrypted_filename}'\n"
+                            f"$EncryptedData = [System.IO.File]::ReadAllBytes($InputFile)\n"
+                            f"$RSA = New-Object System.Security.Cryptography.RSACryptoServiceProvider\n"
+                            f"$RSA.PersistKeyInCsp = $false\n"
+                            f"$RSA.FromXmlString($PrivateKeyXml)\n"
+                            f"$DecryptedData = $RSA.Decrypt($EncryptedData, $true)\n"
+                            f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
+                            )
 
                         try:
                             subprocess.run(["powershell", "-Command", ps_script_rsa_decrypt], capture_output=True, check=True, text=True)
@@ -315,29 +316,29 @@ f"[System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)\n"
                     if algorithm == "AES":
                         key_hex = key_value
                         ps_script = f'''
-$key_hex = "{key_hex}"
-$key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
-$key = [byte[]]$key
+                            $key_hex = "{key_hex}"
+                            $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                            $key = [byte[]]$key
 
-$iv = New-Object byte[] 16
-[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
+                            $iv = New-Object byte[] 16
+                            [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
 
-$aes = [System.Security.Cryptography.AesCng]::new()
-$aes.Key = $key
-$aes.IV = $iv
-$aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-$encryptor = $aes.CreateEncryptor()
+                            $aes = [System.Security.Cryptography.AesCng]::new()
+                            $aes.Key = $key
+                            $aes.IV = $iv
+                            $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                            $encryptor = $aes.CreateEncryptor()
 
-$data = [System.IO.File]::ReadAllBytes("{file_path}")
-$cipher = $encryptor.TransformFinalBlock($data, 0, $data.Length)
+                            $data = [System.IO.File]::ReadAllBytes("{file_path}")
+                            $cipher = $encryptor.TransformFinalBlock($data, 0, $data.Length)
 
-$final = New-Object byte[] ($iv.Length + $cipher.Length)
-[Array]::Copy($iv, 0, $final, 0, $iv.Length)
-[Array]::Copy($cipher, 0, $final, $iv.Length, $cipher.Length)
+                            $final = New-Object byte[] ($iv.Length + $cipher.Length)
+                            [Array]::Copy($iv, 0, $final, 0, $iv.Length)
+                            [Array]::Copy($cipher, 0, $final, $iv.Length, $cipher.Length)
 
-[System.IO.File]::WriteAllBytes("{encrypted_filename}", $final)
-'''
+                            [System.IO.File]::WriteAllBytes("{encrypted_filename}", $final)
+                            '''
                         try:
                             subprocess.run(["powershell", "-Command", ps_script], check=True)
                         except subprocess.CalledProcessError as e:
@@ -347,28 +348,28 @@ $final = New-Object byte[] ($iv.Length + $cipher.Length)
 
                     elif algorithm == "DES":
                         ps_script_des = f"""
-                        $key_hex = "{key_value}"
-                        $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
-                        $key = [byte[]]$key
-                        
-                        $IV = New-Object Byte[] 8
-                        [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
-                                        
-                        $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
-                        $DES.Key = $key
-                        $DES.IV = $IV
-                        $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
-                        $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
-                        $Encryptor = $DES.CreateEncryptor()
+                            $key_hex = "{key_value}"
+                            $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                            $key = [byte[]]$key
+                            
+                            $IV = New-Object Byte[] 8
+                            [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($IV)
+                                            
+                            $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
+                            $DES.Key = $key
+                            $DES.IV = $IV
+                            $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
+                            $Encryptor = $DES.CreateEncryptor()
 
-                        $InputFile = '{file_path}'
-                        $OutputFile = '{encrypted_filename}'
+                            $InputFile = '{file_path}'
+                            $OutputFile = '{encrypted_filename}'
 
-                        $Data = [System.IO.File]::ReadAllBytes($InputFile)
-                        $EncryptedData = $Encryptor.TransformFinalBlock($Data, 0, $Data.Length)
+                            $Data = [System.IO.File]::ReadAllBytes($InputFile)
+                            $EncryptedData = $Encryptor.TransformFinalBlock($Data, 0, $Data.Length)
 
-                        [System.IO.File]::WriteAllBytes($OutputFile, $IV + $EncryptedData)
-                        """
+                            [System.IO.File]::WriteAllBytes($OutputFile, $IV + $EncryptedData)
+                            """
                         try:
                             subprocess.run(["powershell", "-Command", ps_script_des], check=True)
                         except subprocess.CalledProcessError as e:
@@ -401,25 +402,25 @@ $final = New-Object byte[] ($iv.Length + $cipher.Length)
                     if algorithm == "AES":
                         aes_key_hex = key_value 
                         ps_decrypt = f'''
-$key_hex = "{aes_key_hex}"
-$key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
-$key = [byte[]]$key
-"Key length: $($key.Length)" | Out-Host
+                            $key_hex = "{aes_key_hex}"
+                            $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                            $key = [byte[]]$key
+                            "Key length: $($key.Length)" | Out-Host
 
-$data = [System.IO.File]::ReadAllBytes("{file_path}")
-$iv = $data[0..15]
-$cipher = $data[16..($data.Length - 1)]
+                            $data = [System.IO.File]::ReadAllBytes("{file_path}")
+                            $iv = $data[0..15]
+                            $cipher = $data[16..($data.Length - 1)]
 
-$aes = [System.Security.Cryptography.AesCng]::new()
-$aes.Key = $key
-$aes.IV = $iv
-$aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-$aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-$decryptor = $aes.CreateDecryptor()
+                            $aes = [System.Security.Cryptography.AesCng]::new()
+                            $aes.Key = $key
+                            $aes.IV = $iv
+                            $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+                            $decryptor = $aes.CreateDecryptor()
 
-$plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
-[System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
-'''
+                            $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
+                            [System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
+                            '''
                         try:
                             subprocess.run(["powershell", "-Command", ps_decrypt], check=True)
                         except subprocess.CalledProcessError as e:
@@ -429,25 +430,25 @@ $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
 
                     elif algorithm == "DES":
                         ps_decrypt = f"""
-                        $key_hex = "{key_value}"
-                        $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
-                        $key = [byte[]]$key
-                        "Key length: $($key.Length)" | Out-Host
+                            $key_hex = "{key_value}"
+                            $key = ($key_hex -replace '..', '$0 ') -split ' ' | Where-Object {{ $_ -match '^[0-9A-Fa-f]{{2}}$' }} | ForEach-Object {{ [Convert]::ToByte($_, 16) }}
+                            $key = [byte[]]$key
+                            "Key length: $($key.Length)" | Out-Host
 
-                        $data = [System.IO.File]::ReadAllBytes("{file_path}")
-                        $iv = $data[0..7]
-                        $cipher = $data[8..($data.Length - 1)]
-                                        
-                        $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
-                        $DES.Key = $key
-                        $DES.IV = $IV
-                        $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
-                        $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
-                        $decryptor = $DES.CreateDecryptor()
+                            $data = [System.IO.File]::ReadAllBytes("{file_path}")
+                            $iv = $data[0..7]
+                            $cipher = $data[8..($data.Length - 1)]
+                                            
+                            $DES = New-Object System.Security.Cryptography.DESCryptoServiceProvider
+                            $DES.Key = $key
+                            $DES.IV = $IV
+                            $DES.Mode = [System.Security.Cryptography.CipherMode]::CBC
+                            $DES.Padding = [System.Security.Cryptography.PaddingMode]::Zeros
+                            $decryptor = $DES.CreateDecryptor()
 
-                        $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
-                        [System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
-                        """
+                            $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
+                            [System.IO.File]::WriteAllBytes("{decrypted_filename}", $plain)
+                            """
                         try:
                             subprocess.run(["powershell", "-Command", ps_decrypt], check=True)
                         except subprocess.CalledProcessError as e:
@@ -456,48 +457,6 @@ $plain = $decryptor.TransformFinalBlock($cipher, 0, $cipher.Length)
                             return
                     else:
                         messagebox.showerror("Eroare", "Algoritm de decriptare necunoscut!")
-                        return
-                    
-                    ps_script = f"""
-                    # Extract private key from the key_value
-                    $key_parts = '{key_value}'.Split('###KEY_SEPARATOR###')
-                    $PrivateKey = $key_parts[0]  # Private key will be the first part
-                    $PublicKey = $key_parts[1]   # Public key will be the second part (though not needed for decryption)
-
-                    # Convert the private key to SecureString
-                    $PrivateKey = ConvertTo-SecureString -String $PrivateKey -AsPlainText -Force
-
-                    # Convert SecureString to Byte array
-                    $PrivateKeyBytes = [System.Text.Encoding]::UTF8.GetBytes($PrivateKey)
-
-                    # Read the encrypted file and extract the IV and ciphertext
-                    $InputFile = '{file_path}'
-                    $OutputFile = '{decrypted_filename}'
-
-                    $FileBytes = [System.IO.File]::ReadAllBytes($InputFile)
-                    $IV = $FileBytes[0..15]  # Extract the IV from the first 16 bytes
-                    $CipherText = $FileBytes[16..($FileBytes.Length - 1)]  # The remaining bytes are the encrypted data
-
-                    # Set up AES decryption
-                    $AES = New-Object System.Security.Cryptography.AesManaged
-                    $AES.Key = $PrivateKeyBytes  # Use the private key (converted to byte array)
-                    $AES.IV = $IV
-                    $AES.Mode = [System.Security.Cryptography.CipherMode]::CBC
-                    $AES.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-                    $Decryptor = $AES.CreateDecryptor()
-
-                    # Decrypt the ciphertext
-                    $DecryptedData = $Decryptor.TransformFinalBlock($CipherText, 0, $CipherText.Length)
-
-                    # Write the decrypted data to the output file
-                    [System.IO.File]::WriteAllBytes($OutputFile, $DecryptedData)
-                    """
-
-                    try:
-                        subprocess.run(["powershell", "-Command", ps_script], check=True)
-                    except subprocess.CalledProcessError as e:
-                        messagebox.showerror("Eroare PowerShell", f"Eroare la decriptarea fisierului: {e.stderr}")
-                        print(e.stderr)
                         return
                 else:
                     raise ValueError("Framework neimplementat.")
